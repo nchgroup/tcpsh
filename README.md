@@ -392,6 +392,42 @@ tcpsh -c 127.0.0.1:9000
 
 ---
 
+## MCP Integration
+
+tcpsh can be controlled by any MCP-compatible AI host (Claude Desktop, VS Code Copilot, Cursor, etc.) via **[tcpsh-mcp](https://github.com/nchgroup/tcpsh-mcp)** — an MCP server that exposes all tcpsh capabilities as 13 AI-callable tools.
+
+```json
+{
+  "mcpServers": {
+    "tcpsh": {
+      "command": "npx",
+      "args": ["-y", "github:nchgroup/tcpsh-mcp"]
+    }
+  }
+}
+```
+
+In **remote mode**, tcpsh-mcp connects to a running `tcpsh --server` instance over an encrypted channel, letting the AI manage TCP connections on a remote host:
+
+```json
+{
+  "mcpServers": {
+    "tcpsh-remote": {
+      "command": "npx",
+      "args": ["-y", "github:nchgroup/tcpsh-mcp"],
+      "env": {
+        "TCPSH_SERVER": "127.0.0.1:9000",
+        "TCPSH_TOKEN": "<TOKEN>"
+      }
+    }
+  }
+}
+```
+
+See [github.com/nchgroup/tcpsh-mcp](https://github.com/nchgroup/tcpsh-mcp) for full documentation.
+
+---
+
 ## License
 
 MIT
