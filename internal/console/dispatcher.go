@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
 	"github.com/nchgroup/tcpsh/internal/executor"
 	"github.com/nchgroup/tcpsh/internal/forward"
 	"github.com/nchgroup/tcpsh/internal/listener"
@@ -241,7 +242,7 @@ func (d *Dispatcher) doInfo(args []string) string {
 	var sb strings.Builder
 	for _, s := range targets {
 		sb.WriteString(fmt.Sprintf(
-			"  ID:       %s\n  Port:     %d\n  Remote:   %s\n  State:    %s\n  TX:       %d bytes\n  RX:       %d bytes\n  Duration: %s\n\n",
+			"  ID:            %s\n  Port:          %d\n  Remote:        %s\n  State:         %s\n  TX:            %d bytes\n  RX:            %d bytes\n  Duration:      %s\n  Last activity: %s ago\n\n",
 			ui.StyleBold.Render(strconv.Itoa(s.ID)),
 			s.Port,
 			s.RemoteAddr,
@@ -249,6 +250,7 @@ func (d *Dispatcher) doInfo(args []string) string {
 			s.BytesTX.Load(),
 			s.BytesRX.Load(),
 			s.Duration().Round(1e9),
+			s.IdleDuration().Round(1e9),
 		))
 	}
 	return sb.String()

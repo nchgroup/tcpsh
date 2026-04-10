@@ -19,7 +19,7 @@ Key differences from netcat:
 
 ## Requirements
 
-- Go ≥ 1.21
+- Go ≥ 1.26.2
 - macOS, Linux, or any POSIX system
 
 ---

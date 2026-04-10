@@ -16,8 +16,9 @@ type Session struct {
 	ConnectedAt time.Time
 
 	// Metrics — updated atomically.
-	BytesTX atomic.Int64
-	BytesRX atomic.Int64
+	BytesTX      atomic.Int64
+	BytesRX      atomic.Int64
+	lastActivity atomic.Int64 // UnixNano of last received byte
 
 	mu      sync.Mutex
 	state   State
@@ -31,15 +32,22 @@ type Session struct {
 }
 
 func newSession(id, port int, conn net.Conn) *Session {
+	now := time.Now()
 	s := &Session{
 		ID:          id,
 		Port:        port,
 		RemoteAddr:  conn.RemoteAddr().String(),
 		Conn:        conn,
-		ConnectedAt: time.Now(),
+		ConnectedAt: now,
 		state:       StateActive,
 	}
+	s.lastActivity.Store(now.UnixNano())
 	s.rxCond = sync.NewCond(&s.rxMu)
+	// Enable TCP keepalive so the OS detects dead peers.
+	if tc, ok := conn.(*net.TCPConn); ok {
+		_ = tc.SetKeepAlive(true)
+		_ = tc.SetKeepAlivePeriod(30 * time.Second)
+	}
 	return s
 }
 
@@ -78,6 +86,17 @@ func (s *Session) Duration() time.Duration {
 	return time.Since(s.ConnectedAt)
 }
 
+// LastActivity returns the time of the last received byte, or ConnectedAt
+// if no data has been received yet.
+func (s *Session) LastActivity() time.Time {
+	return time.Unix(0, s.lastActivity.Load())
+}
+
+// IdleDuration returns time elapsed since the last received byte.
+func (s *Session) IdleDuration() time.Duration {
+	return time.Since(s.LastActivity())
+}
+
 // StartRxLoop starts a goroutine that continuously reads from s.Conn and
 // appends data to the internal RX buffer. It is the sole reader of s.Conn,
 // preventing concurrent read races when the session is in foreground mode.
@@ -89,6 +108,7 @@ func (s *Session) StartRxLoop() {
 			n, err := s.Conn.Read(buf)
 			if n > 0 {
 				s.BytesRX.Add(int64(n))
+				s.lastActivity.Store(time.Now().UnixNano())
 				chunk := make([]byte, n)
 				copy(chunk, buf[:n])
 				s.rxMu.Lock()

@@ -71,6 +71,7 @@ func RenderPorts(ports []PortRow) string {
 // STATE:    "foreground" = 10   → 13
 // TX/RX:    "1023.9M" = 7       → 9
 // DURATION: "99h59m59s" = 9     → 11
+// IDLE:     same format         → 11
 const (
 	wSID     = 5
 	wSPort   = 7
@@ -79,6 +80,7 @@ const (
 	wSTX     = 9
 	wSRX     = 9
 	wSDur    = 11
+	wSIdle   = 11
 )
 
 // RenderSessions renders a formatted table of active sessions.
@@ -96,11 +98,17 @@ func RenderSessions(sessions []*session.Session) string {
 		col(wSState, "STATE"),
 		col(wSTX, "TX"),
 		col(wSRX, "RX"),
+		col(wSIdle, "IDLE"),
 		col(wSDur, "DURATION"),
 	)
 	sb.WriteString(ui.StyleHeader.Render(hdr) + "\n")
 
 	for _, s := range sessions {
+		idle := s.IdleDuration()
+		idleStyle := ui.StyleMuted
+		if idle > 5*time.Minute {
+			idleStyle = ui.StyleWarn
+		}
 		sb.WriteString(row(
 			col(wSID, fmt.Sprintf("%d", s.ID)),
 			col(wSPort, fmt.Sprintf("%d", s.Port)),
@@ -108,6 +116,7 @@ func RenderSessions(sessions []*session.Session) string {
 			col(wSState, stateColor(s.State()).Render(s.State().String())),
 			col(wSTX, formatBytes(s.BytesTX.Load())),
 			col(wSRX, formatBytes(s.BytesRX.Load())),
+			col(wSIdle, idleStyle.Render(formatDuration(idle))),
 			col(wSDur, formatDuration(s.Duration())),
 		) + "\n")
 	}
