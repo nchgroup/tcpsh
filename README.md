@@ -303,83 +303,84 @@ tcpsh ships with three runtime modes:
 | Mode | Invocation | Description |
 |---|---|---|
 | **Console** | `tcpsh` (default) | Interactive REPL on the local terminal |
-| **Server** | `tcpsh --server <bind:port>` | Headless daemon; accepts one encrypted CLI client |
-| **Client** | `tcpsh --client <host:port>` | Connects to a running tcpsh server |
+| **Server** | `tcpsh -server <bind:port>` | Headless daemon; accepts one encrypted CLI client |
+| **Client** | `tcpsh -client <host:port>` | Connects to a running tcpsh server |
 
 ### Console mode (default)
 
 ```bash
-tcpsh                    # start interactive REPL
-tcpsh -p 4444            # open port 4444 immediately on startup
-tcpsh -q                 # suppress banner
+tcpsh                      # start interactive REPL
+tcpsh -port 4444           # open port 4444 immediately on startup
+tcpsh -quiet               # suppress banner
 ```
 
-### Server mode (`--server` / `-s`)
+### Server mode (`-server`)
 
 Starts a headless daemon.  All traffic between server and client is encrypted
 with **ChaCha20-Poly1305** (key = SHA-256 of the token).
 
 ```bash
 # Auto-generate a random token (printed at startup)
-tcpsh --server 0.0.0.0:9000
-tcpsh -s 127.0.0.1:9000
+tcpsh -server 0.0.0.0:9000
+tcpsh -server 127.0.0.1:9000
 
 # Hardcode a specific token via flag (must be exactly 32 [A-Za-z0-9] chars)
-tcpsh --server 0.0.0.0:9000 --token MyHardcodedToken12345678901234
+tcpsh -server 0.0.0.0:9000 -token MyHardcodedToken12345678901234
 
 # Hardcode a specific token via environment variable
-TCPSH_TOKEN=MyHardcodedToken12345678901234 tcpsh --server 0.0.0.0:9000
+TCPSH_TOKEN=MyHardcodedToken12345678901234 tcpsh -server 0.0.0.0:9000
 ```
 
 At startup the token box is rendered with proper proportions regardless of
 the bind address length:
 
 ```
-╭──────────────────────────────────────────────────────╮
-│                                                      │
-│   tcpsh server listening on 0.0.0.0:9000             │
-│                                                      │
-│   TOKEN  aBcDeFgHiJkLmNoPqRsTuVwXyZ012345            │
-│                                                      │
-│   Connect:                                           │
-│     tcpsh --client 0.0.0.0:9000 --token <TOKEN>      │
-│     TCPSH_TOKEN=<TOKEN> tcpsh --client 0.0.0.0:9000  │
-│                                                      │
-│   Keep this token secret — it encrypts all traffic.  │
-│                                                      │
-╰──────────────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────────╮
+│                                                     │
+│   tcpsh server listening on 0.0.0.0:9000            │
+│                                                     │
+│   TOKEN  aBcDeFgHiJkLmNoPqRsTuVwXyZ012345           │
+│                                                     │
+│   Connect:                                          │
+│     tcpsh -client 0.0.0.0:9000 -token <TOKEN>       │
+│     TCPSH_TOKEN=<TOKEN> tcpsh -client 0.0.0.0:9000  │
+│                                                     │
+│   Keep this token secret — it encrypts all traffic. │
+│                                                     │
+╰─────────────────────────────────────────────────────╯
 ```
 
 The server preserves all state (open ports, sessions, forwards) if the client
 disconnects.  It accepts the next client connection without interruption.
 
-### Client mode (`--client` / `-c`)
+### Client mode (`-client`)
 
 Connects to a running tcpsh server.  The full command set is available exactly
 as in console mode — commands are sent encrypted and responses are printed locally.
 
 ```bash
-tcpsh --client 127.0.0.1:9000 --token aBcDeFgHiJkLmNoPqRsTuVwXyZ012345
-tcpsh -c 127.0.0.1:9000 --token aBcDeFgHiJkLmNoPqRsTuVwXyZ012345
+tcpsh -client 127.0.0.1:9000 -token aBcDeFgHiJkLmNoPqRsTuVwXyZ012345
 
 # Token from environment variable (recommended for scripts):
 export TCPSH_TOKEN=aBcDeFgHiJkLmNoPqRsTuVwXyZ012345
-tcpsh -c 127.0.0.1:9000
+tcpsh -client 127.0.0.1:9000
 
-# If --token is omitted and TCPSH_TOKEN is not set, tcpsh prompts interactively.
+# If -token is omitted and TCPSH_TOKEN is not set, tcpsh prompts interactively.
 ```
 
 #### Token resolution priority
 
-| Source | `--server` | `--client` |
+| Source | `-server` | `-client` |
 |---|---|---|
-| `--token <value>` flag | hardcode | authenticate |
+| `-token <value>` flag | hardcode | authenticate |
 | `TCPSH_TOKEN` env var | hardcode (fallback) | authenticate (fallback) |
 | Interactive prompt | — (random token generated) | last resort |
 | *(none)* | random token generated | error |
 
 > **Security note:** The token must be exactly 32 characters from `[A-Za-z0-9]`.
 > Treat it like a password — it derives the encryption key for all traffic.
+>
+> Flags use a single dash: `-server`, `-client`, `-token`, `-port`, `-quiet`.
 
 ---
 
@@ -407,7 +408,7 @@ tcpsh can be controlled by any MCP-compatible AI host (Claude Desktop, VS Code C
 }
 ```
 
-In **remote mode**, tcpsh-mcp connects to a running `tcpsh --server` instance over an encrypted channel, letting the AI manage TCP connections on a remote host:
+In **remote mode**, tcpsh-mcp connects to a running `tcpsh -server` instance over an encrypted channel, letting the AI manage TCP connections on a remote host:
 
 ```json
 {

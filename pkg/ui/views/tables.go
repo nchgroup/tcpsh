@@ -4,13 +4,23 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"github.com/nchgroup/tcpsh/internal/forward"
-	"github.com/nchgroup/tcpsh/internal/session"
-	"github.com/nchgroup/tcpsh/pkg/ui"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/nchgroup/tcpsh/internal/forward"
+	"github.com/nchgroup/tcpsh/internal/session"
+	"github.com/nchgroup/tcpsh/pkg/ui"
 )
+
+// col pads/truncates s to exactly w visual columns, ANSI-aware.
+func col(w int, s string) string {
+	return lipgloss.NewStyle().Width(w).MaxWidth(w).Render(s)
+}
+
+// row builds a display row with a 2-space leading indent.
+func row(cells ...string) string {
+	return "  " + strings.Join(cells, "")
+}
 
 // PortRow holds display data for one listener port.
 type PortRow struct {
@@ -18,6 +28,16 @@ type PortRow struct {
 	Host     string
 	Sessions int
 }
+
+// Listeners column widths.
+// PORT:  65535 = 5 chars  → 7
+// HOST:  255.255.255.255  = 15 chars → 18
+// CONNS: small int        → 12 (fits header "CONNECTIONS")
+const (
+	wLPort  = 7
+	wLHost  = 18
+	wLConns = 12
+)
 
 // RenderPorts renders a formatted table of open listener ports.
 func RenderPorts(ports []PortRow) string {
@@ -27,20 +47,39 @@ func RenderPorts(ports []PortRow) string {
 	sort.Slice(ports, func(i, j int) bool { return ports[i].Port < ports[j].Port })
 
 	var sb strings.Builder
-	sb.WriteString(ui.StyleHeader.Render(fmt.Sprintf("  %-8s %-20s %-12s", "PORT", "HOST", "CONNECTIONS")) + "\n")
+	hdr := row(col(wLPort, "PORT"), col(wLHost, "HOST"), col(wLConns, "CONNECTIONS"))
+	sb.WriteString(ui.StyleHeader.Render(hdr) + "\n")
+
 	for _, r := range ports {
 		host := r.Host
 		if host == "" {
 			host = "0.0.0.0"
 		}
-		sb.WriteString(fmt.Sprintf("  %-8d %-20s %-12d\n",
-			r.Port,
-			ui.StyleMuted.Render(host),
-			r.Sessions,
-		))
+		sb.WriteString(row(
+			col(wLPort, fmt.Sprintf("%d", r.Port)),
+			col(wLHost, ui.StyleMuted.Render(host)),
+			col(wLConns, fmt.Sprintf("%d", r.Sessions)),
+		) + "\n")
 	}
 	return sb.String()
 }
+
+// Sessions column widths.
+// ID:       small int           → 5
+// PORT:     65535 = 5 chars     → 7
+// REMOTE:   255.255.255.255:65535 = 21 chars → 23
+// STATE:    "foreground" = 10   → 13
+// TX/RX:    "1023.9M" = 7       → 9
+// DURATION: "99h59m59s" = 9     → 11
+const (
+	wSID     = 5
+	wSPort   = 7
+	wSRemote = 23
+	wSState  = 13
+	wSTX     = 9
+	wSRX     = 9
+	wSDur    = 11
+)
 
 // RenderSessions renders a formatted table of active sessions.
 func RenderSessions(sessions []*session.Session) string {
@@ -50,23 +89,43 @@ func RenderSessions(sessions []*session.Session) string {
 	sort.Slice(sessions, func(i, j int) bool { return sessions[i].ID < sessions[j].ID })
 
 	var sb strings.Builder
-	sb.WriteString(ui.StyleHeader.Render(fmt.Sprintf("  %-6s %-8s %-26s %-12s %-12s %-10s %-12s",
-		"ID", "PORT", "REMOTE", "STATE", "TX", "RX", "DURATION")) + "\n")
+	hdr := row(
+		col(wSID, "ID"),
+		col(wSPort, "PORT"),
+		col(wSRemote, "REMOTE"),
+		col(wSState, "STATE"),
+		col(wSTX, "TX"),
+		col(wSRX, "RX"),
+		col(wSDur, "DURATION"),
+	)
+	sb.WriteString(ui.StyleHeader.Render(hdr) + "\n")
 
 	for _, s := range sessions {
-		stateStyle := stateColor(s.State())
-		sb.WriteString(fmt.Sprintf("  %-6d %-8d %-26s %-12s %-12s %-10s %-12s\n",
-			s.ID,
-			s.Port,
-			s.RemoteAddr,
-			stateStyle.Render(s.State().String()),
-			formatBytes(s.BytesTX.Load()),
-			formatBytes(s.BytesRX.Load()),
-			formatDuration(s.Duration()),
-		))
+		sb.WriteString(row(
+			col(wSID, fmt.Sprintf("%d", s.ID)),
+			col(wSPort, fmt.Sprintf("%d", s.Port)),
+			col(wSRemote, s.RemoteAddr),
+			col(wSState, stateColor(s.State()).Render(s.State().String())),
+			col(wSTX, formatBytes(s.BytesTX.Load())),
+			col(wSRX, formatBytes(s.BytesRX.Load())),
+			col(wSDur, formatDuration(s.Duration())),
+		) + "\n")
 	}
 	return sb.String()
 }
+
+// Forwards column widths.
+// LOCAL:  port 5 chars  → 7
+// REMOTE: host:port     → 28
+// TYPE:   "proxy" = 5   → 7
+// TX/RX:  same as above → 9
+const (
+	wFLocal  = 7
+	wFRemote = 28
+	wFType   = 7
+	wFTX     = 9
+	wFRX     = 9
+)
 
 // RenderForwards renders a table of active TCP forwarders.
 func RenderForwards(entries []*forward.Entry) string {
@@ -75,8 +134,14 @@ func RenderForwards(entries []*forward.Entry) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(ui.StyleHeader.Render(fmt.Sprintf("  %-8s %-30s %-8s %-12s %-12s",
-		"LOCAL", "REMOTE", "TYPE", "TX", "RX")) + "\n")
+	hdr := row(
+		col(wFLocal, "LOCAL"),
+		col(wFRemote, "REMOTE"),
+		col(wFType, "TYPE"),
+		col(wFTX, "TX"),
+		col(wFRX, "RX"),
+	)
+	sb.WriteString(ui.StyleHeader.Render(hdr) + "\n")
 
 	for _, e := range entries {
 		kind := ui.StyleForward.Render("fwd")
@@ -84,13 +149,13 @@ func RenderForwards(entries []*forward.Entry) string {
 			kind = ui.StyleProxy.Render("proxy")
 		}
 		tx, rx := e.Stats()
-		sb.WriteString(fmt.Sprintf("  %-8d %-30s %-8s %-12s %-12s\n",
-			e.Rule.LocalPort,
-			e.Rule.RemoteAddr(),
-			kind,
-			formatBytes(tx),
-			formatBytes(rx),
-		))
+		sb.WriteString(row(
+			col(wFLocal, fmt.Sprintf("%d", e.Rule.LocalPort)),
+			col(wFRemote, e.Rule.RemoteAddr()),
+			col(wFType, kind),
+			col(wFTX, formatBytes(tx)),
+			col(wFRX, formatBytes(rx)),
+		) + "\n")
 	}
 	return sb.String()
 }
