@@ -1,5 +1,5 @@
 // Package proto implements the framing and encryption layer used between
-// tcpsh --server and --client.
+// tcpsh -server and -client.
 //
 // Wire format (per frame):
 //

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -10,105 +11,71 @@ import (
 	"github.com/nchgroup/tcpsh/internal/config"
 	"github.com/nchgroup/tcpsh/internal/console"
 	"github.com/nchgroup/tcpsh/internal/server"
-
-	"github.com/spf13/cobra"
 )
 
 var (
-	flagQuiet  bool
-	flagPort   int
-	flagServer string
-	flagClient string
-	flagToken  string
+	flagQuiet  = flag.Bool("quiet", false, "Suppress banner and notifications")
+	flagPort   = flag.Int("port", 0, "Open a port immediately on startup (console mode)")
+	flagServer = flag.String("server", "", "Start in server mode, listening on <bind:port>")
+	flagClient = flag.String("client", "", "Connect as client to a tcpsh server at <host:port>")
+	flagToken  = flag.String("token", "", "Token for -server (hardcode) or -client (authenticate); overrides TCPSH_TOKEN env")
 )
 
-var rootCmd = &cobra.Command{
-	Use:   "tcpsh",
-	Short: "Interactive TCP connection manager",
-	Long: `tcpsh — an interactive TCP server and connection manager.
-
-Modes:
-  Console (default)   Interactive REPL on the local terminal.
-  Server  (-server)   Headless daemon; a client connects over encrypted TCP.
-  Client  (-client)   Connects to a running tcpsh server.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
-		if err != nil {
-			return fmt.Errorf("config: %w", err)
-		}
-		if flagQuiet {
-			cfg.Quiet = true
-		}
-
-		switch {
-		case flagServer != "":
-			srv, err := server.New(cfg, flagServer, resolveServerToken(flagToken))
-			if err != nil {
-				return err
-			}
-			return srv.Run()
-
-		case flagClient != "":
-			token := resolveToken(flagToken)
-			if token == "" {
-				return fmt.Errorf("no token provided — use -token or set TCPSH_TOKEN")
-			}
-			return client.New(flagClient, token).Run()
-
-		default:
-			// Console mode (original behaviour).
-			repl, err := console.New(cfg)
-			if err != nil {
-				return err
-			}
-			if flagPort > 0 {
-				fmt.Printf("Opening port %d...\n", flagPort)
-			}
-			return repl.Run()
-		}
-	},
+func usage() {
+	fmt.Fprintf(os.Stderr, "tcpsh — interactive TCP server and connection manager\n\n")
+	fmt.Fprintf(os.Stderr, "Modes:\n")
+	fmt.Fprintf(os.Stderr, "  Console (default)   Interactive REPL on the local terminal.\n")
+	fmt.Fprintf(os.Stderr, "  Server  (-server)   Headless daemon; a client connects over encrypted TCP.\n")
+	fmt.Fprintf(os.Stderr, "  Client  (-client)   Connects to a running tcpsh server.\n\n")
+	fmt.Fprintf(os.Stderr, "Flags:\n")
+	flag.PrintDefaults()
 }
 
-// Execute runs the root command.
+// Execute parses flags and runs the selected mode.
 func Execute() {
-	os.Args = normalizeSingleDashFlags(os.Args)
-	if err := rootCmd.Execute(); err != nil {
+	flag.Usage = usage
+	flag.Parse()
+
+	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-// normalizeSingleDashFlags converts single-dash long flags (e.g. -server foo)
-// to their double-dash canonical form (--server foo) so pflag can parse them.
-// This is safe because no single-character aliases are registered.
-func normalizeSingleDashFlags(args []string) []string {
-	longFlags := map[string]bool{
-		"server": true,
-		"client": true,
-		"token":  true,
-		"port":   true,
-		"quiet":  true,
+func run() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
 	}
-	out := make([]string, 0, len(args))
-	for _, a := range args {
-		if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") {
-			name := strings.TrimLeft(a, "-")
-			bare := strings.SplitN(name, "=", 2)[0]
-			if longFlags[bare] {
-				a = "-" + a
-			}
-		}
-		out = append(out, a)
+	if *flagQuiet {
+		cfg.Quiet = true
 	}
-	return out
-}
 
-func init() {
-	rootCmd.PersistentFlags().BoolVar(&flagQuiet, "quiet", false, "Suppress banner and notifications")
-	rootCmd.PersistentFlags().IntVar(&flagPort, "port", 0, "Open a port immediately on startup (console mode)")
-	rootCmd.PersistentFlags().StringVar(&flagServer, "server", "", "Start in server mode, listening on <bind:port>")
-	rootCmd.PersistentFlags().StringVar(&flagClient, "client", "", "Connect as client to a tcpsh server at <host:port>")
-	rootCmd.PersistentFlags().StringVar(&flagToken, "token", "", "Token for -server (hardcode) or -client (authenticate); overrides TCPSH_TOKEN env")
+	switch {
+	case *flagServer != "":
+		srv, err := server.New(cfg, *flagServer, resolveServerToken(*flagToken))
+		if err != nil {
+			return err
+		}
+		return srv.Run()
+
+	case *flagClient != "":
+		token := resolveToken(*flagToken)
+		if token == "" {
+			return fmt.Errorf("no token provided — use -token or set TCPSH_TOKEN")
+		}
+		return client.New(*flagClient, token).Run()
+
+	default:
+		repl, err := console.New(cfg)
+		if err != nil {
+			return err
+		}
+		if *flagPort > 0 {
+			fmt.Printf("Opening port %d...\n", *flagPort)
+		}
+		return repl.Run()
+	}
 }
 
 // resolveServerToken returns the token for -server mode.
@@ -129,7 +96,6 @@ func resolveToken(flagValue string) string {
 	if t := os.Getenv("TCPSH_TOKEN"); t != "" {
 		return t
 	}
-	// Interactive prompt as last resort.
 	fmt.Print("Token: ")
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')

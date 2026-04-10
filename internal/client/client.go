@@ -1,6 +1,6 @@
-// Package client implements the tcpsh --client mode.
+// Package client implements the tcpsh -client mode.
 //
-// The client connects to a running tcpsh --server instance, performs the
+// The client connects to a running tcpsh -server instance, performs the
 // ChaCha20-Poly1305 encrypted handshake, and then provides a readline-based
 // interactive REPL that sends encrypted command frames to the server and
 // prints the server's encrypted responses.
@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"strings"
+
 	"github.com/nchgroup/tcpsh/internal/proto"
 
 	"github.com/chzyer/readline"

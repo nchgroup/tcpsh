@@ -1,4 +1,4 @@
-// Package server implements the tcpsh --server mode.
+// Package server implements the tcpsh -server mode.
 //
 // The server listens on a TCP address, accepts one client at a time, performs
 // a ChaCha20-Poly1305 encrypted handshake using a one-time token, and then
@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+
 	"github.com/nchgroup/tcpsh/internal/config"
 	"github.com/nchgroup/tcpsh/internal/console"
 	"github.com/nchgroup/tcpsh/internal/forward"
@@ -42,7 +43,7 @@ type Server struct {
 
 // New creates a Server.  If token is non-empty it is used as-is (hardcoded
 // mode); otherwise a fresh random 32-char token is generated.  The token must
-// be supplied to `tcpsh --client` via --token or TCPSH_TOKEN.
+// be supplied to `tcpsh -client` via -token or TCPSH_TOKEN.
 func New(cfg *config.Config, bind string, token string) (*Server, error) {
 	var err error
 	if token == "" {
@@ -99,8 +100,8 @@ func (s *Server) PrintToken() {
 		"TOKEN  " + tokenStyle.Render(s.token),
 		"",
 		dimStyle.Render("Connect:"),
-		"  tcpsh --client " + s.bind + " --token " + tokenStyle.Render("<TOKEN>"),
-		"  TCPSH_TOKEN=" + tokenStyle.Render("<TOKEN>") + " tcpsh --client " + s.bind,
+		"  tcpsh -client " + s.bind + " -token " + tokenStyle.Render("<TOKEN>"),
+		"  TCPSH_TOKEN=" + tokenStyle.Render("<TOKEN>") + " tcpsh -client " + s.bind,
 		"",
 		dimStyle.Render("Keep this token secret — it encrypts all traffic."),
 	}, "\n")
