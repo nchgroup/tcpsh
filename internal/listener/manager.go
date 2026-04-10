@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"tcpsh/internal/session"
+	"github.com/nchgroup/tcpsh/internal/session"
 )
 
 // Manager owns all active TCP listeners.

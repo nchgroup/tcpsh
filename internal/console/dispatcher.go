@@ -6,12 +6,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"tcpsh/internal/executor"
-	"tcpsh/internal/forward"
-	"tcpsh/internal/listener"
-	"tcpsh/internal/session"
-	"tcpsh/pkg/ui"
-	"tcpsh/pkg/ui/views"
+	"github.com/nchgroup/tcpsh/internal/executor"
+	"github.com/nchgroup/tcpsh/internal/forward"
+	"github.com/nchgroup/tcpsh/internal/listener"
+	"github.com/nchgroup/tcpsh/internal/session"
+	"github.com/nchgroup/tcpsh/pkg/ui"
+	"github.com/nchgroup/tcpsh/pkg/ui/views"
 )
 
 // Dispatcher routes parsed commands to the appropriate handler.

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"tcpsh/internal/forward"
-	"tcpsh/internal/session"
-	"tcpsh/pkg/ui"
+	"github.com/nchgroup/tcpsh/internal/forward"
+	"github.com/nchgroup/tcpsh/internal/session"
+	"github.com/nchgroup/tcpsh/pkg/ui"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"

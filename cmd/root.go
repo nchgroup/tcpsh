@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"tcpsh/internal/client"
-	"tcpsh/internal/config"
-	"tcpsh/internal/console"
-	"tcpsh/internal/server"
+	"github.com/nchgroup/tcpsh/internal/client"
+	"github.com/nchgroup/tcpsh/internal/config"
+	"github.com/nchgroup/tcpsh/internal/console"
+	"github.com/nchgroup/tcpsh/internal/server"
 
 	"github.com/spf13/cobra"
 )

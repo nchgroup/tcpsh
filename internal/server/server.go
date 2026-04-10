@@ -19,12 +19,12 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"tcpsh/internal/config"
-	"tcpsh/internal/console"
-	"tcpsh/internal/forward"
-	"tcpsh/internal/listener"
-	"tcpsh/internal/proto"
-	"tcpsh/internal/session"
+	"github.com/nchgroup/tcpsh/internal/config"
+	"github.com/nchgroup/tcpsh/internal/console"
+	"github.com/nchgroup/tcpsh/internal/forward"
+	"github.com/nchgroup/tcpsh/internal/listener"
+	"github.com/nchgroup/tcpsh/internal/proto"
+	"github.com/nchgroup/tcpsh/internal/session"
 
 	"github.com/charmbracelet/lipgloss"
 )

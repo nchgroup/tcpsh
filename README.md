@@ -36,7 +36,7 @@ sudo mv tcpsh /usr/local/bin/
 
 Or with `go install` (once published):
 ```bash
-go install https://github.com/nchgroup/tcpsh@master
+go install github.com/nchgroup/tcpsh@latest
 ```
 
 ---

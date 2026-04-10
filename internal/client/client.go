@@ -13,7 +13,7 @@ import (
 	"net"
 	"os"
 	"strings"
-	"tcpsh/internal/proto"
+	"github.com/nchgroup/tcpsh/internal/proto"
 
 	"github.com/chzyer/readline"
 )

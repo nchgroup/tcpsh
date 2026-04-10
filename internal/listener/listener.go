@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"tcpsh/internal/session"
+	"github.com/nchgroup/tcpsh/internal/session"
 )
 
 // Event is emitted by a Listener when something noteworthy happens.

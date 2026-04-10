@@ -8,12 +8,12 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"tcpsh/internal/config"
-	"tcpsh/internal/forward"
-	"tcpsh/internal/history"
-	"tcpsh/internal/listener"
-	"tcpsh/internal/session"
-	"tcpsh/pkg/ui"
+	"github.com/nchgroup/tcpsh/internal/config"
+	"github.com/nchgroup/tcpsh/internal/forward"
+	"github.com/nchgroup/tcpsh/internal/history"
+	"github.com/nchgroup/tcpsh/internal/listener"
+	"github.com/nchgroup/tcpsh/internal/session"
+	"github.com/nchgroup/tcpsh/pkg/ui"
 
 	"github.com/chzyer/readline"
 )

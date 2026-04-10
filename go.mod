@@ -1,4 +1,4 @@
-module tcpsh
+module github.com/nchgroup/tcpsh
 
 go 1.26.2
 

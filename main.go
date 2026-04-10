@@ -1,6 +1,6 @@
 package main
 
-import "tcpsh/cmd"
+import "github.com/nchgroup/tcpsh/cmd"
 
 func main() {
 	cmd.Execute()
