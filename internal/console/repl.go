@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
 	"github.com/nchgroup/tcpsh/internal/config"
 	"github.com/nchgroup/tcpsh/internal/forward"
 	"github.com/nchgroup/tcpsh/internal/history"
@@ -108,16 +109,20 @@ func (r *REPL) Run() error {
 			continue
 		case CmdSystem:
 			out := r.dispatcher.RunSystem(cmd.Args[0])
+			r.rl.Clean()
 			fmt.Print(out)
 			if len(out) > 0 && out[len(out)-1] != '\n' {
 				fmt.Println()
 			}
+			r.rl.Refresh()
 		case CmdSpecial:
 			if cmd.Verb == "+exit" {
 				return r.doExit(true)
 			}
 			// Other special commands are session-mode only.
+			r.rl.Clean()
 			fmt.Println(ui.StyleMuted.Render("  Special commands (+back, +bg) are only available in session mode."))
+			r.rl.Refresh()
 		case CmdTool:
 			if cmd.Verb == "exit" {
 				return r.doExit(true)
@@ -127,7 +132,9 @@ func (r *REPL) Run() error {
 				continue
 			}
 			out := r.dispatcher.Dispatch(cmd)
+			r.rl.Clean()
 			fmt.Println(out)
+			r.rl.Refresh()
 		}
 	}
 }
