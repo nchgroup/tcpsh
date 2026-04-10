@@ -69,6 +69,7 @@ func (c *Client) Run() error {
 
 	eventCh := make(chan string, 32)
 	responseCh := make(chan string, 1)
+	sessionStartCh := make(chan string, 1) // payload = "port:idx:remote"
 	readErrCh := make(chan error, 1)
 
 	// Reader goroutine: continuously reads typed frames and routes them.
@@ -82,6 +83,8 @@ func (c *Client) Run() error {
 			switch typ {
 			case proto.FrameEvent:
 				eventCh <- string(payload)
+			case proto.FrameSessionStart:
+				sessionStartCh <- string(payload)
 			default:
 				responseCh <- string(payload)
 			}
@@ -121,12 +124,101 @@ func (c *Client) Run() error {
 			return fmt.Errorf("client: send: %w", err)
 		}
 
+		// If this was a `use` command, wait for either FrameSessionStart
+		// (enter session mode) or FrameResponse (error — stay in menu mode).
+		fields := strings.Fields(trimmed)
+		if len(fields) > 0 && strings.ToLower(fields[0]) == "use" {
+			select {
+			case info := <-sessionStartCh:
+				// info = "port:idx:remote"
+				parts := strings.SplitN(info, ":", 3)
+				sessionPrompt := prompt
+				if len(parts) >= 2 {
+					sessionPrompt = fmt.Sprintf("[%s:%s]> ", parts[0], parts[1])
+				}
+				mu.Lock()
+				rl.Clean()
+				remote := ""
+				if len(parts) >= 3 {
+					remote = parts[2]
+				}
+				fmt.Printf("  Entering session %s:%s (%s). Type '+back' to return, '+bg' to background, '+exit' to quit.\n",
+					parts[0], parts[1], remote)
+				rl.SetPrompt(sessionPrompt)
+				rl.Refresh()
+				mu.Unlock()
+
+				// Session passthrough loop.
+			sessionLoop:
+				for {
+					sline, serr := rl.Readline()
+					if serr != nil {
+						if serr == readline.ErrInterrupt {
+							mu.Lock()
+							rl.Clean()
+							fmt.Println("  [Use '+back' to return to menu, '+exit' to quit]")
+							rl.Refresh()
+							mu.Unlock()
+							continue
+						}
+						break sessionLoop
+					}
+					strimmed := strings.TrimSpace(sline)
+					if strimmed == "" {
+						strimmed = "\n"
+					}
+					if err2 := proto.WriteFrame(conn, c.key, []byte(strimmed)); err2 != nil {
+						return fmt.Errorf("client: send: %w", err2)
+					}
+					// Wait for FrameResponse only on special exit commands.
+					// Otherwise just fire-and-forget; output arrives via FrameEvent.
+					switch strings.TrimSpace(strimmed) {
+					case "+back", "+bg", "+background", "+exit", "exit":
+						select {
+						case resp := <-responseCh:
+							mu.Lock()
+							rl.Clean()
+							fmt.Println(resp)
+							rl.SetPrompt(prompt)
+							rl.Refresh()
+							mu.Unlock()
+							if strings.TrimSpace(strimmed) == "+exit" || strings.TrimSpace(strimmed) == "exit" {
+								return nil
+							}
+						case err2 := <-readErrCh:
+							_ = err2
+							fmt.Println("\n  [!] Server disconnected.")
+							return nil
+						}
+						break sessionLoop
+					}
+				}
+				continue
+			case resp := <-responseCh:
+				// Server returned an error for the use command.
+				mu.Lock()
+				rl.Clean()
+				fmt.Println(resp)
+				rl.Refresh()
+				mu.Unlock()
+			case err2 := <-readErrCh:
+				if err2 != io.EOF && !isClosedErr(err2) {
+					fmt.Fprintf(os.Stderr, "\n  [!] Server disconnected: %v\n", err2)
+				} else {
+					fmt.Println("\n  [!] Server disconnected.")
+				}
+				return nil
+			}
+			continue
+		}
+
 		// Wait for the server's response frame (or a read error).
 		select {
 		case resp := <-responseCh:
 			mu.Lock()
 			rl.Clean()
 			fmt.Println(resp)
+			rl.Refresh()
 			mu.Unlock()
 		case err := <-readErrCh:
 			if err != io.EOF && !isClosedErr(err) {

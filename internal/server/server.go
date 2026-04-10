@@ -18,14 +18,17 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/nchgroup/tcpsh/internal/config"
 	"github.com/nchgroup/tcpsh/internal/console"
+	"github.com/nchgroup/tcpsh/internal/executor"
 	"github.com/nchgroup/tcpsh/internal/forward"
 	"github.com/nchgroup/tcpsh/internal/listener"
 	"github.com/nchgroup/tcpsh/internal/proto"
 	"github.com/nchgroup/tcpsh/internal/session"
+	"github.com/nchgroup/tcpsh/pkg/ui"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -159,6 +162,12 @@ func (s *Server) authenticate(conn net.Conn) error {
 	return proto.ReceiveHandshake(conn, br, s.key)
 }
 
+// outMsg is a typed message sent from the server to the connected client.
+type outMsg struct {
+	typ  byte
+	text string
+}
+
 // serveClient handles one connected CLI client.  It returns when the client
 // disconnects.  All state (listeners, sessions, forwards) persists after
 // serveClient returns.
@@ -168,11 +177,6 @@ func (s *Server) serveClient(conn net.Conn) {
 
 	br := proto.NewBufReader(conn)
 	dispatcher := console.NewDispatcher(ctx, s.sessions, s.listeners, s.forwards)
-
-	type outMsg struct {
-		typ  byte
-		text string
-	}
 
 	// cmdCh carries decrypted command lines from the client.
 	cmdCh := make(chan string, 8)
@@ -276,6 +280,10 @@ func (s *Server) serveClient(conn net.Conn) {
 					_ = proto.WriteTypedFrame(conn, s.key, proto.FrameResponse, []byte("Bye."))
 					return
 				}
+				if cmd.Verb == "use" {
+					s.serveSession(cmd.Args, cmdCh, outCh, ctx)
+					continue
+				}
 				response = dispatcher.Dispatch(cmd)
 			}
 			if response != "" {
@@ -286,6 +294,156 @@ func (s *Server) serveClient(conn net.Conn) {
 				}
 			}
 		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// serveSession handles the `use` command in server mode.
+// It streams session RX data to the client as FrameEvent frames and forwards
+// lines from the client to the session until +back / +bg / +exit.
+func (s *Server) serveSession(args []string, cmdCh <-chan string, outCh chan<- outMsg, ctx context.Context) {
+	send := func(typ byte, text string) {
+		select {
+		case outCh <- outMsg{typ, text}:
+		case <-ctx.Done():
+		}
+	}
+
+	if len(args) == 0 {
+		send(proto.FrameResponse, ui.Errorf("usage: use <port>[:<idx>]"))
+		return
+	}
+
+	port, idx, err := console.ParsePortIdx(args[0])
+	if err != nil {
+		send(proto.FrameResponse, ui.Errorf("%v", err))
+		return
+	}
+
+	sessions := s.sessions.ByPort(port)
+	if len(sessions) == 0 {
+		send(proto.FrameResponse, ui.Errorf("no active connections on port %d", port))
+		return
+	}
+
+	var sess *session.Session
+	var selectedIdx int
+	if idx == 0 {
+		if len(sessions) > 1 {
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("  Multiple sessions on port %d — specify an index:\n", port))
+			for i, ss := range sessions {
+				sb.WriteString(fmt.Sprintf("    use %d:%d  (%s)\n", port, i+1, ss.RemoteAddr))
+			}
+			send(proto.FrameResponse, sb.String())
+			return
+		}
+		sess = sessions[0]
+		selectedIdx = 1
+	} else {
+		if idx > len(sessions) {
+			send(proto.FrameResponse, ui.Errorf("index %d out of range", idx))
+			return
+		}
+		sess = sessions[idx-1]
+		selectedIdx = idx
+	}
+
+	// Tell the client to switch to session-mode prompt.
+	send(proto.FrameSessionStart, fmt.Sprintf("%d:%d:%s", sess.Port, selectedIdx, sess.RemoteAddr))
+
+	sess.SetState(session.StateForeground)
+	defer func() {
+		if sess.State() == session.StateForeground {
+			sess.SetState(session.StateBackground)
+		}
+	}()
+
+	// rxDone is closed by the RX goroutine when the session dies.
+	rxDone := make(chan struct{})
+	// exitFlag tells the RX goroutine to stop when we exit via +back/+bg.
+	var exitFlag atomic.Bool
+
+	// RX goroutine: drain session buffer → client as FrameEvent.
+	go func() {
+		defer close(rxDone)
+		for {
+			sess.RxMu().Lock()
+			for len(sess.RxBuf()) == 0 && sess.State() != session.StateDead && !exitFlag.Load() {
+				sess.RxCond().Wait()
+			}
+			data := sess.DrainRxBuf()
+			isDead := sess.State() == session.StateDead
+			done := exitFlag.Load()
+			sess.RxMu().Unlock()
+
+			if len(data) > 0 {
+				send(proto.FrameEvent, string(data))
+			}
+			if isDead {
+				send(proto.FrameEvent, fmt.Sprintf("[!] Session %d closed by remote.", sess.ID))
+				send(proto.FrameResponse, "  Returning to menu.")
+				return
+			}
+			if done {
+				return
+			}
+		}
+	}()
+
+	// Passthrough loop: client lines → session TX.
+	for {
+		select {
+		case <-rxDone:
+			// Session died; RX goroutine already sent FrameResponse.
+			return
+		case line, ok := <-cmdCh:
+			if !ok {
+				exitFlag.Store(true)
+				sess.RxCond().Broadcast()
+				return
+			}
+			switch strings.TrimSpace(line) {
+			case "+back":
+				exitFlag.Store(true)
+				sess.RxCond().Broadcast()
+				send(proto.FrameResponse, "  Returning to menu. Session is still open.")
+				return
+			case "+bg", "+background":
+				exitFlag.Store(true)
+				sess.RxCond().Broadcast()
+				sess.SetState(session.StateBackground)
+				send(proto.FrameResponse, fmt.Sprintf("  Session %d sent to background.", sess.ID))
+				return
+			case "+exit", "exit":
+				exitFlag.Store(true)
+				sess.RxCond().Broadcast()
+				send(proto.FrameResponse, "Bye.")
+				return
+			default:
+				if sess.State() == session.StateDead {
+					// rxDone will fire in the next select iteration.
+					continue
+				}
+				// !<cmd> runs locally on the server, output sent back as FrameEvent.
+				if strings.HasPrefix(line, "!") && len(line) > 1 {
+					out, err := executor.Run(line[1:])
+					if err != nil {
+						out = ui.Errorf("system: %v", err)
+					}
+					send(proto.FrameEvent, out)
+					continue
+				}
+				if _, writeErr := sess.Write([]byte(line + "\n")); writeErr != nil {
+					sess.SetState(session.StateDead)
+					sess.RxCond().Broadcast()
+				}
+				// Output will arrive via FrameEvent — no FrameResponse sent here.
+			}
+		case <-ctx.Done():
+			exitFlag.Store(true)
+			sess.RxCond().Broadcast()
 			return
 		}
 	}

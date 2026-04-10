@@ -32,8 +32,9 @@ const (
 	maxFrameBytes = 4 * 1024 * 1024 // 4 MiB sanity cap
 
 	// Frame type bytes (first byte of plaintext payload).
-	FrameResponse = byte('R') // direct response to a command
-	FrameEvent    = byte('E') // unsolicited push event
+	FrameResponse     = byte('R') // direct response to a command
+	FrameEvent        = byte('E') // unsolicited push event
+	FrameSessionStart = byte('S') // server→client: entering session mode; payload = "port:idx:remote"
 )
 
 // GenerateToken returns a cryptographically random 32-character token using
