@@ -30,6 +30,10 @@ const (
 	tokenLen      = 32
 	tokenCharset  = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 	maxFrameBytes = 4 * 1024 * 1024 // 4 MiB sanity cap
+
+	// Frame type bytes (first byte of plaintext payload).
+	FrameResponse = byte('R') // direct response to a command
+	FrameEvent    = byte('E') // unsolicited push event
 )
 
 // GenerateToken returns a cryptographically random 32-character token using
@@ -166,6 +170,26 @@ func ReceiveHandshake(w io.Writer, r io.Reader, key [32]byte) error {
 		return fmt.Errorf("proto: handshake reply: %w", err)
 	}
 	return nil
+}
+
+// WriteTypedFrame prepends a type byte to payload and encrypts it as a frame.
+func WriteTypedFrame(w io.Writer, key [32]byte, typ byte, payload []byte) error {
+	plain := make([]byte, 1+len(payload))
+	plain[0] = typ
+	copy(plain[1:], payload)
+	return WriteFrame(w, key, plain)
+}
+
+// ReadTypedFrame reads a frame and returns its type byte and the remaining payload.
+func ReadTypedFrame(r io.Reader, key [32]byte) (byte, []byte, error) {
+	plain, err := ReadFrame(r, key)
+	if err != nil {
+		return 0, nil, err
+	}
+	if len(plain) == 0 {
+		return 0, nil, errors.New("proto: empty typed frame")
+	}
+	return plain[0], plain[1:], nil
 }
 
 // NewBufReader wraps a net.Conn (or any io.Reader) in a bufio.Reader for

@@ -169,10 +169,15 @@ func (s *Server) serveClient(conn net.Conn) {
 	br := proto.NewBufReader(conn)
 	dispatcher := console.NewDispatcher(ctx, s.sessions, s.listeners, s.forwards)
 
+	type outMsg struct {
+		typ  byte
+		text string
+	}
+
 	// cmdCh carries decrypted command lines from the client.
 	cmdCh := make(chan string, 8)
-	// outCh carries text to send back to the client.
-	outCh := make(chan string, 64)
+	// outCh carries typed messages to send back to the client.
+	outCh := make(chan outMsg, 64)
 
 	// Reader goroutine: decrypt frames from client → cmdCh.
 	go func() {
@@ -191,7 +196,7 @@ func (s *Server) serveClient(conn net.Conn) {
 		}
 	}()
 
-	// Event forwarder: listener events → outCh.
+	// Event forwarder: listener events → outCh tagged as FrameEvent.
 	go func() {
 		evCh := s.listeners.Events()
 		for {
@@ -216,7 +221,7 @@ func (s *Server) serveClient(conn net.Conn) {
 				}
 				if msg != "" {
 					select {
-					case outCh <- msg:
+					case outCh <- outMsg{proto.FrameEvent, msg}:
 					case <-ctx.Done():
 						return
 					}
@@ -225,7 +230,7 @@ func (s *Server) serveClient(conn net.Conn) {
 		}
 	}()
 
-	// Writer goroutine: encrypt and send frames from outCh to client.
+	// Writer goroutine: encrypt and send typed frames from outCh to client.
 	go func() {
 		for {
 			select {
@@ -233,7 +238,7 @@ func (s *Server) serveClient(conn net.Conn) {
 				if !ok {
 					return
 				}
-				if err := proto.WriteFrame(conn, s.key, []byte(msg)); err != nil {
+				if err := proto.WriteTypedFrame(conn, s.key, msg.typ, []byte(msg.text)); err != nil {
 					return
 				}
 			case <-ctx.Done():
@@ -262,20 +267,20 @@ func (s *Server) serveClient(conn net.Conn) {
 				response = dispatcher.RunSystem(cmd.Args[0])
 			case console.CmdSpecial:
 				if cmd.Verb == "+exit" || cmd.Verb == "exit" {
-					_ = proto.WriteFrame(conn, s.key, []byte("Bye."))
+					_ = proto.WriteTypedFrame(conn, s.key, proto.FrameResponse, []byte("Bye."))
 					return
 				}
 				response = "[server] special commands are not supported in server mode"
 			case console.CmdTool:
 				if cmd.Verb == "exit" {
-					_ = proto.WriteFrame(conn, s.key, []byte("Bye."))
+					_ = proto.WriteTypedFrame(conn, s.key, proto.FrameResponse, []byte("Bye."))
 					return
 				}
 				response = dispatcher.Dispatch(cmd)
 			}
 			if response != "" {
 				select {
-				case outCh <- response:
+				case outCh <- outMsg{proto.FrameResponse, response}:
 				case <-ctx.Done():
 					return
 				}

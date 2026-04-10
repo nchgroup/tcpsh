@@ -53,28 +53,6 @@ func (c *Client) Run() error {
 	fmt.Printf("  Connected to tcpsh server at %s\n", c.addr)
 	fmt.Printf("  Type 'help' for commands. Type 'exit' or '+exit' to disconnect.\n\n")
 
-	// done is closed when the server disconnects or we exit.
-	done := make(chan struct{})
-
-	// Reader goroutine: receive server frames → stdout.
-	go func() {
-		defer close(done)
-		for {
-			plain, err := proto.ReadFrame(br, c.key)
-			if err != nil {
-				if err != io.EOF && !isClosedErr(err) {
-					fmt.Fprintf(os.Stderr, "\n  [!] Server disconnected: %v\n", err)
-				} else {
-					fmt.Println("\n  [!] Server disconnected.")
-				}
-				return
-			}
-			msg := string(plain)
-			fmt.Println(msg)
-		}
-	}()
-
-	// Local readline loop — no history file (client is a thin terminal).
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:          prompt,
 		InterruptPrompt: "",
@@ -86,13 +64,6 @@ func (c *Client) Run() error {
 	defer rl.Close()
 
 	for {
-		// Exit immediately if the server disconnected.
-		select {
-		case <-done:
-			return nil
-		default:
-		}
-
 		line, err := rl.Readline()
 		if err != nil {
 			if err == readline.ErrInterrupt {
@@ -110,14 +81,52 @@ func (c *Client) Run() error {
 			continue
 		}
 
-		lower := strings.ToLower(trimmed)
-		if lower == "exit" || lower == "+exit" {
-			_ = proto.WriteFrame(conn, c.key, []byte(trimmed))
-			return nil
-		}
-
 		if err := proto.WriteFrame(conn, c.key, []byte(trimmed)); err != nil {
 			return fmt.Errorf("client: send: %w", err)
+		}
+
+		isExit := strings.ToLower(trimmed) == "exit" || strings.ToLower(trimmed) == "+exit"
+
+		// Read frames until we receive the FrameResponse that closes the
+		// request/response cycle.  FrameEvent frames are printed immediately.
+		for {
+			typ, payload, err := proto.ReadTypedFrame(br, c.key)
+			if err != nil {
+				if err != io.EOF && !isClosedErr(err) {
+					fmt.Fprintf(os.Stderr, "\n  [!] Server disconnected: %v\n", err)
+				} else {
+					fmt.Println("\n  [!] Server disconnected.")
+				}
+				return nil
+			}
+
+			msg := string(payload)
+
+			switch typ {
+			case proto.FrameEvent:
+				// Push notification — print without consuming the prompt.
+				rl.Clean()
+				fmt.Println(msg)
+				rl.Refresh()
+			case proto.FrameResponse:
+				// Command response — print then break to show next prompt.
+				rl.Clean()
+				fmt.Println(msg)
+				// Don't Refresh: rl.Readline() will redraw the prompt naturally.
+			default:
+				// Unknown type — treat as response to avoid hanging.
+				rl.Clean()
+				fmt.Println(msg)
+			}
+
+			// FrameResponse ends the request/response cycle.
+			if typ == proto.FrameResponse {
+				break
+			}
+		}
+
+		if isExit {
+			return nil
 		}
 	}
 
