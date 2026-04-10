@@ -78,10 +78,14 @@ tcpsh> use 4444
 ### Opening a Port
 
 ```
-tcpsh> open 4444
-tcpsh> open 4444 127.0.0.1     # bind to specific interface
-tcpsh> open 443 0.0.0.0        # explicit all-interfaces
+tcpsh> open 4444                 # bind 0.0.0.0:4444 (all interfaces)
+tcpsh> open 4444 127.0.0.1      # bind to specific IP
+tcpsh> open 443 0.0.0.0         # explicit all-interfaces
+tcpsh> open 4444 tun0           # bind to tun0's IPv4 address
+tcpsh> open 4444 eth0           # bind to eth0's IPv4 address
 ```
+
+`host` accepts an IP address or a network interface name. Interface names are resolved to their first IPv4 address at bind time.
 
 ### Listing Ports and Connections
 
@@ -161,7 +165,7 @@ Global history is saved to `~/.tcpsh_history` and persists between runs.
 
 | Command | Description |
 |---|---|
-| `open <port> [host]` | Open TCP listener |
+| `open <port> [host\|iface]` | Open TCP listener (IP or interface name, e.g. `tun0`) |
 | `close <port>` | Close listener and all its sessions |
 | `kill <port>[:<idx>]` | Terminate connection (FIN), keep listener |
 | `kill -f <port>[:<idx>]` | Force terminate (RST) |
