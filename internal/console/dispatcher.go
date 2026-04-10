@@ -73,7 +73,7 @@ func (d *Dispatcher) RunSystem(cmdStr string) string {
 
 func (d *Dispatcher) doOpen(args []string) string {
 	if len(args) == 0 {
-		return ui.Errorf("usage: open <port> [host]")
+		return ui.Errorf("usage: open <port> [host|interface]")
 	}
 	port, err := strconv.Atoi(args[0])
 	if err != nil || port < 1 || port > 65535 {
@@ -86,11 +86,10 @@ func (d *Dispatcher) doOpen(args []string) string {
 	if err := d.listeners.Open(d.ctx, port, host); err != nil {
 		return ui.Errorf("%v", err)
 	}
-	addr := fmt.Sprintf("%s:%d", host, port)
-	if host == "" {
-		addr = fmt.Sprintf("0.0.0.0:%d", port)
-	}
-	return ui.StyleActive.Render(fmt.Sprintf("[+] Listening on %s", addr))
+	// listeners.Open resolves interface names to IPs before binding;
+	// retrieve the actual bound address from the listener for display.
+	bindAddr := d.listeners.BoundAddr(port)
+	return ui.StyleActive.Render(fmt.Sprintf("[+] Listening on %s", bindAddr))
 }
 
 // --- close ---
@@ -446,7 +445,7 @@ func (d *Dispatcher) doHelp(args []string) string {
 func helpGeneral() string {
 	return `
 ` + ui.StyleBold.Render("LISTENER MANAGEMENT") + `
-  open <port> [host]          Open a TCP listener
+  open <port> [host|iface]    Open a TCP listener (e.g. tun0, eth0, 127.0.0.1)
   close <port>                Close listener and all connections
   kill [-f] <port>[:<idx>]    Terminate connection (FIN or RST with -f)
 
@@ -487,7 +486,7 @@ func helpGeneral() string {
 func helpFor(verb string) string {
 	switch strings.ToLower(verb) {
 	case "open":
-		return "  open <port> [host]\n  Open a TCP listener. host defaults to 0.0.0.0 (all interfaces)."
+		return "  open <port> [host|interface]\n  Open a TCP listener.\n  host can be an IP address, a network interface name (e.g. tun0, eth0),\n  or omitted to bind all interfaces (0.0.0.0)."
 	case "close":
 		return "  close <port>\n  Stop the listener and close all its sessions."
 	case "kill":

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
 	"github.com/nchgroup/tcpsh/internal/session"
 )
 
@@ -86,6 +87,22 @@ func (m *Manager) Get(port int) *Listener {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.listeners[port]
+}
+
+// BoundAddr returns the address the listener is actually bound to (resolved
+// IP:port). Returns "0.0.0.0:<port>" if the port is not open.
+func (m *Manager) BoundAddr(port int) string {
+	m.mu.RLock()
+	l := m.listeners[port]
+	m.mu.RUnlock()
+	if l == nil {
+		return fmt.Sprintf("0.0.0.0:%d", port)
+	}
+	host := l.Host
+	if host == "" {
+		host = "0.0.0.0"
+	}
+	return fmt.Sprintf("%s:%d", host, port)
 }
 
 // CloseAll shuts down every listener.

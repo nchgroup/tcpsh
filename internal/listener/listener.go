@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+
 	"github.com/nchgroup/tcpsh/internal/session"
 )
 
@@ -35,10 +36,51 @@ type Listener struct {
 	cancel   context.CancelFunc
 }
 
+// resolveHost converts host to a bind address string.
+// If host is empty it returns "" (bind all interfaces).
+// If host is a valid IP it is returned as-is.
+// Otherwise it is treated as a network interface name and its first IPv4
+// address is returned, e.g. "tun0" → "10.10.14.3".
+func resolveHost(host string) (string, error) {
+	if host == "" {
+		return "", nil
+	}
+	if net.ParseIP(host) != nil {
+		return host, nil
+	}
+	iface, err := net.InterfaceByName(host)
+	if err != nil {
+		return "", fmt.Errorf("unknown host or interface %q: %w", host, err)
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return "", fmt.Errorf("interface %s: %w", host, err)
+	}
+	for _, a := range addrs {
+		var ip net.IP
+		switch v := a.(type) {
+		case *net.IPNet:
+			ip = v.IP
+		case *net.IPAddr:
+			ip = v.IP
+		}
+		if ip4 := ip.To4(); ip4 != nil {
+			return ip4.String(), nil
+		}
+	}
+	return "", fmt.Errorf("interface %s has no IPv4 address", host)
+}
+
 // Start opens a TCP listener on host:port and begins accepting connections.
-// Accepted sessions are registered in sessions; events are sent on events.
+// host may be an IP address, a network interface name (e.g. "tun0"), or empty
+// to bind all interfaces. Accepted sessions are registered in sessions; events
+// are sent on events.
 func Start(ctx context.Context, port int, host string, sessions *session.Manager, events chan<- Event) (*Listener, error) {
-	addr := fmt.Sprintf("%s:%d", host, port)
+	bindIP, err := resolveHost(host)
+	if err != nil {
+		return nil, err
+	}
+	addr := fmt.Sprintf("%s:%d", bindIP, port)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("listen %s: %w", addr, err)
@@ -47,7 +89,7 @@ func Start(ctx context.Context, port int, host string, sessions *session.Manager
 	ctx, cancel := context.WithCancel(ctx)
 	l := &Listener{
 		Port:     port,
-		Host:     host,
+		Host:     bindIP,
 		ln:       ln,
 		sessions: sessions,
 		events:   events,
