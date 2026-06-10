@@ -78,7 +78,7 @@ tcpsh> use 4444
 ### Opening a Port
 
 ```
-tcpsh> open 4444                 # bind 0.0.0.0:4444 (all interfaces)
+tcpsh> open 4444                # bind 0.0.0.0:4444 (all interfaces)
 tcpsh> open 4444 127.0.0.1      # bind to specific IP
 tcpsh> open 443 0.0.0.0         # explicit all-interfaces
 tcpsh> open 4444 tun0           # bind to tun0's IPv4 address
